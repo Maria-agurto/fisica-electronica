@@ -393,10 +393,12 @@ class CircuitoCanvas(ctk.CTkFrame):
             outline=color,
             width=1,
         )
-        # Barra de título
+        # Barra de título (color sólido oscurecido — Tkinter no soporta
+        # canales alfa en colores hex, así que mezclamos con el fondo
+        # del panel en vez de usar transparencia real)
         c.create_rectangle(
             x, y, x + w, y + 22,
-            fill=color + "33",   # transparencia simulada con hex
+            fill=self._blend_with_bg(color),
             outline=color,
             width=1,
         )
@@ -406,6 +408,30 @@ class CircuitoCanvas(ctk.CTkFrame):
             fill=color,
             font=("Consolas", 10, "bold"),
         )
+
+    @staticmethod
+    def _blend_with_bg(hex_color: str, bg: str = "#0f172a", alpha: float = 0.2) -> str:
+        """
+        Simula transparencia mezclando `hex_color` con `bg` en proporción
+        `alpha`, devolviendo un color hex sólido de 6 dígitos (válido en
+        Tkinter, que no soporta el canal alfa de 8 dígitos).
+
+        Args:
+            hex_color: Color de primer plano, formato "#RRGGBB".
+            bg:        Color de fondo sobre el que se "superpone".
+            alpha:     Opacidad simulada (0.0 = solo bg, 1.0 = solo hex_color).
+
+        Returns:
+            Color resultante en formato "#RRGGBB".
+        """
+        fg = hex_color.lstrip("#")
+        bg = bg.lstrip("#")
+
+        r = int(int(fg[0:2], 16) * alpha + int(bg[0:2], 16) * (1 - alpha))
+        g = int(int(fg[2:4], 16) * alpha + int(bg[2:4], 16) * (1 - alpha))
+        b = int(int(fg[4:6], 16) * alpha + int(bg[4:6], 16) * (1 - alpha))
+
+        return f"#{r:02x}{g:02x}{b:02x}"
 
     def _create_value_rows(
         self,
@@ -514,13 +540,25 @@ class CircuitoCanvas(ctk.CTkFrame):
         """
         c = self._canvas
 
-        def fmt_v(key: str, unit: str = "V") -> str:
-            val = datos.get(key)
-            return f"{val:.4f} {unit}" if val is not None else "---"
+        def fmt_v(key: str, unit: str = "V", factor: float = 1.0) -> str:
+            """
+            Formatea un valor del diccionario `datos` con su unidad.
 
+            Args:
+                key:    Clave a leer (Vbe, Ib, Ic, Vce).
+                unit:   Unidad a mostrar junto al número.
+                factor: Factor de escala a aplicar antes de mostrar
+                        (p. ej. 1000 para convertir A → mA).
+            """
+            val = datos.get(key)
+            return f"{val * factor:.4f} {unit}" if val is not None else "---"
+
+        # Ib e Ic vienen de motor_calculo.py en Amperios — se multiplican
+        # por 1000 para mostrarlos en miliamperios (mA), que es la unidad
+        # legible para las corrientes típicas de un BJT en pequeña señal.
         c.itemconfigure(ids["vbe"],    text=fmt_v("Vbe"))
-        c.itemconfigure(ids["ib"],     text=fmt_v("Ib",  "mA"))
-        c.itemconfigure(ids["ic"],     text=fmt_v("Ic",  "mA"))
+        c.itemconfigure(ids["ib"],     text=fmt_v("Ib",  "mA", factor=1000))
+        c.itemconfigure(ids["ic"],     text=fmt_v("Ic",  "mA", factor=1000))
         c.itemconfigure(ids["vce"],    text=fmt_v("Vce"))
         c.itemconfigure(ids["estado"], text=datos.get("estado", "---"))
 
